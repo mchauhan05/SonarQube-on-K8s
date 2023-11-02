@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonarqube
+  namespace: devops-tools
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sonarqube-server
+  template:
+    metadata:
+      labels:
+        app: sonarqube-server
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      serviceAccountName: sonar-admin
+      containers:
+        - name: sonarqube
+          image: sonarqube:9.9.1-community
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 120
+            periodSeconds: 60
+            failureThreshold: 1
+          resources:
+            limits:
+              memory: 2048Mi
+              #cpu: 2000m
+            requests:
+              memory: 1024Mi
+              #cpu: 500m
+          envFrom:
+            - configMapRef:
+                name: sonar-postgres-config
+          env:
+            - name: sonar.search.javaAdditionalOpts
+              value: "-Dnode.store.allow_mmap=false"
+            - name: SONAR_ES_BOOTSTRAP_CHECKS_DISABLE
+              value: "true"
+            - name: SONAR_SEARCH_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+            - name: "SONARQUBE_JDBC_PASSWORD"
+              valueFrom:
+                secretKeyRef:
+                  name: sonar-postgres-secret
+                  key: SONARQUBE_JDBC_PASSWORD
+            - name: SONARQUBE_SERVER_BASEURL
+              value: https://sonarqube.1worldsync.com
+          volumeMounts:
+            - name: sonarqube-data-volume
+              mountPath: /opt/sonarqube/conf
+            - name: sonarqube-data-volume
+              mountPath: /opt/sonarqube/extensions
+            - name: sonarqube-data-volume
+              mountPath: /opt/sonarqube/data
+      volumes:
+        - name: sonarqube-data-volume
+          persistentVolumeClaim:
+            claimName: sonarqube-pvc
